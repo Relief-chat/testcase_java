@@ -1,0 +1,41 @@
+# Verify Homebrew Core Formula Works
+name: Homebrew Nightly Verification
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "26 9 * * *"
+
+jobs:
+  brew-build:
+    name: Build Semgrep via Brew from `returntocorp/semgrep:develop`
+    runs-on: ["self-hosted", "macOS", "X64"]
+    steps:
+      - name: Uninstall semgrep
+        # This is sub-optimal - our workflows shouldn't have to conform to their environment.
+        # However, on the runner side, we can't hook into the workflow run to clean up after.
+        run: brew uninstall semgrep || true
+      - name: Brew update
+        run: brew update
+      - name: Brew Install
+        run: brew install semgrep --HEAD
+      - name: Check installed correctly
+        run: brew test semgrep --HEAD
+      - name: Clean up semgrep installation
+        run: brew uninstall semgrep
+
+  notify-failure:
+    needs: [brew-build]
+    name: Notify of Failure
+    runs-on: ubuntu-20.04
+    if: failure()
+    steps:
+      - name: Notify Failure
+        run: |
+          curl --request POST \
+          --url  ${{ secrets.HOMEBREW_NIGHTLY_NOTIFICATIONS_URL }} \
+          --header 'content-type: application/json' \
+          --data '{
+            "commit_sha": "${{needs.release-setup.outputs.version}}",
+            "workflow_url": "https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"
+          }'
